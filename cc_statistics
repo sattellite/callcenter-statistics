@@ -1,0 +1,76 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use DBI;
+use POSIX;
+
+my $host = 'localhost';
+my $user = 'username';
+my $pass = 'password';
+my $table = 'queuelog';
+my $helper_table = 'callcenter_statistics';
+
+my $db = DBI->connect("dbi:Pg:database=asterisk;host=$host", $user, $pass);
+
+sub hms($) {
+    my $seconds = shift;
+    my $h = sprintf("%02d", ($seconds/3600)%24);
+    my $m = sprintf("%02d", ($seconds/60)%60);
+    my $s = sprintf("%02d",  $seconds%60);
+    return "$h:$m:$s";
+}
+
+my $timestamp = strftime("%Y-%m-%d %H", localtime time()-3600);
+
+# SQL Queues
+
+my $q_queue = "SELECT max(to_number(data3, '999')) AS queue_max, round(avg(data3::integer),2) AS queue_avg FROM $table WHERE
+substring(time from 1 for 13) = '$timestamp' AND
+event = 'ENTERQUEUE' AND queuename = 'internet';";
+my $q_time = "SELECT max(data2::integer) AS time_agent_max, round(avg(data2::integer), 2) AS time_agent, max(data1::integer) AS time_queue_max,round(avg(data1::integer), 2) AS time_queue
+FROM $table WHERE
+  substring(time from 1 for 13) = '$timestamp' AND
+  (event = 'COMPLETECALLER' OR event = 'COMPLETEAGENT') AND queuename = 'internet';";
+my $q_opers = "SELECT count(agent) AS agents, sum(answered) AS calls FROM (SELECT agent, count(*) AS answered FROM $table WHERE 
+  substring(time from 1 for 13) = '$timestamp' AND
+  (event = 'COMPLETECALLER' OR event = 'COMPLETEAGENT') AND queuename = 'internet' GROUP BY agent) AS all_agents;";
+my $q_abandon = "SELECT count(*) AS all, round(avg(data1::integer), 2) AS quit_pos_avg, round(avg(data3::integer), 2) AS timeout_avg, max(data3::integer) AS timeout_max
+  FROM $table WHERE
+  substring(time from 1 for 13) = '$timestamp' AND
+  event = 'ABANDON' AND queuename = 'internet';";
+
+my $queue       = ${$db->selectall_arrayref($q_queue)}[0];
+my $time        = ${$db->selectall_arrayref($q_time)}[0];
+my $opers       = ${$db->selectall_arrayref($q_opers)}[0];
+my $abandon     = ${$db->selectall_arrayref($q_abandon)}[0];
+
+my $max_queue   = ${$queue}[0]   ? ${$queue}[0]   : 0;
+my $avg_queue   = ${$queue}[1]   ? ${$queue}[1]   : 0;
+my $opers_ans   = ${$opers}[0]   ? ${$opers}[0]   : 0;
+my $opers_calls = ${$opers}[1]   ? ${$opers}[1]   : 0;
+my $max_talk    = ${$time}[0]    ? ${$time}[0]    : 0;
+my $avg_talk    = ${$time}[1]    ? ${$time}[1]    : 0;
+my $max_wait    = ${$time}[2]    ? ${$time}[2]    : 0;
+my $avg_wait    = ${$time}[3]    ? ${$time}[3]    : 0;
+my $aban        = ${$abandon}[0] ? ${$abandon}[0] : 0;
+my $ab_p_a      = ${$abandon}[1] ? ${$abandon}[1] : 0;
+my $ab_t_a      = ${$abandon}[2] ? ${$abandon}[2] : 0;
+my $ab_t_m      = ${$abandon}[3] ? ${$abandon}[3] : 0;
+
+my $time_m      = hms($max_talk);
+my $time_a      = hms($avg_talk);
+my $time_wm     = hms($max_wait);
+my $time_wa     = hms($avg_wait);
+
+my $html = "$timestamp\t$avg_queue $max_queue\t$time_wa $time_wm\t$time_a $time_m\t$opers_ans $opers_calls";
+
+warn $html, "\n";
+
+$max_wait =~ s/(.*)\..*/$1/;
+$max_talk =~ s/(.*)\..*/$1/;
+$max_queue =~ s/(.*)\..*/$1/;
+
+my $date = $timestamp.':00:00';
+$db->do("INSERT INTO ${helper_table}(date, queue_size_max, queue_size_avg, time_in_queue_max, time_in_queue_avg, time_with_operator_max, time_with_operator_avg, operators, calls, abandoned, abandon_position_avg, abandon_timeout_max, abandon_timeout_avg )
+VALUES('$date', '$max_queue', '$avg_queue', '$max_wait', '$avg_wait', '$max_talk', '$avg_talk', '$opers_ans', '$opers_calls', '$aban', '$ab_p_a', '$ab_t_m', '$ab_t_a')");
+$db->disconnect;

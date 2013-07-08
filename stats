@@ -1,0 +1,398 @@
+#!/usr/bin/perl
+use utf8;
+use Mojolicious::Lite;
+use DBI;
+
+my $host = 'localhost';
+my $user = 'username';
+my $pass = 'password';
+my $table = 'queuelog';
+my $helper_table = 'callcenter_statistics';
+
+helper db => sub {
+  my $self = shift;
+  my $db = DBI->connect("dbi:Pg:database=asterisk;host=$host", $user, $pass);
+  $db->{pg_enable_utf8}=1;
+  return $db;
+};
+
+helper generate_html => sub {
+  my ($self, $res, $type) = @_;
+
+  my $html = '<table id="newspaper"><thead><tr><th>Date</th><th>Queue size max</th><th>Queue size avg</th><th>Time in queue max</th>
+    <th>Time in queue avg</th><th>Time with agent max</th><th>Time with agent avg</th><th>Responsible agents</th><th>Answered calls</th>
+    <th>Abandoned calls</th><th>Abandoned position avg</th><th>Time to abandon a call max</th><th>Time to abandon a call avg</th></tr></thead><tbody>';
+
+  for (my $i=0;$i<=$#{$res};$i++) {
+    my $ref  = ${$res}[$i];
+    my $d    = ${$ref}[1];
+    my $qs_m = ${$ref}[2];
+    my $qs_a = ${$ref}[3];
+    my $tq_m = ${$ref}[4];
+    my $tq_a = ${$ref}[5];
+    my $to_m = ${$ref}[6];
+    my $to_a = ${$ref}[7];
+    my $o    = ${$ref}[8];
+    my $c    = ${$ref}[9];
+    my $a    = ${$ref}[10] ? ${$ref}[10] : 0;
+    my $a_p  = ${$ref}[11] ? ${$ref}[11] : 0;
+    my $a_m  = ${$ref}[12];
+    my $a_a  = ${$ref}[13];
+
+    if ($type eq 'hour') {
+      (my $url = $d) =~ s/\s/_/; $url =~ s/:00$//;
+      $html .= "<tr><td><a href='/stats/period/$url'>$d</a></td>";
+    }
+    elsif ($type eq '10min') {
+      (my $url = $d) =~ s/\s/_/; $url =~ s/:00$//;
+      $html .= "<tr><td><a href='/stats/period/${url}0'>${d}0</a></td>";
+    }
+    elsif ($type eq '1min') {
+      $html .= "<tr><td>$d</td>";
+    }
+    else {
+      $html .= "<tr><td><a href='/stats/period/$d'>$d</a></td>";
+    }
+
+    if (${$res}[$i+1]) {
+      $html .= "<td class='".color(${${$res}[$i+1]}[2], $qs_m)."'>$qs_m</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[3], $qs_a)."'>$qs_a</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[4], $tq_m)."'>".hms($tq_m)."</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[5], $tq_a)."'>".hms($tq_a)."</td>";
+      $html .= "<td class='".color($to_m, ${${$res}[$i+1]}[6])."'>".hms($to_m)."</td>";
+      $html .= "<td class='".color($to_a, ${${$res}[$i+1]}[7])."'>".hms($to_a)."</td>";
+      $html .= "<td class='".color($o, ${${$res}[$i+1]}[8])."'>$o</td>";
+      $html .= "<td class='".color($c, ${${$res}[$i+1]}[9])."'>$c</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[10], $a)."'>$a</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[11], $a_p)."'>$a_p</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[12], $a_m)."'>".hms($a_m)."</td>";
+      $html .= "<td class='".color(${${$res}[$i+1]}[13], $a_a)."'>".hms($a_a)."</td>";
+    }
+    else {
+      $html .= "<td>$qs_m</td><td>$qs_a</td><td>".
+      hms($tq_m).
+      "</td><td>".
+      hms($tq_a).
+      "</td><td>".
+      hms($to_m).
+      "</td><td>".
+      hms($to_a).
+      "</td><td>$o</td><td>$c</td><td>$a</td><td>$a_p</td><td>".
+      hms($a_m).
+      "</td><td>".
+      hms($a_a).
+      "</td>";
+    }
+    $html .= '</tr>';
+  }
+  
+  $html .= '</tbody></table>';
+  return $html;
+};
+
+app->secret('quaD9r2Bj84RRpvB8eEXLK7HXb0nGnHbL0gX4IfF');
+
+sub hms($) {
+    my $seconds = shift;
+    my $h = sprintf("%02d", ($seconds/3600)%24);
+    my $m = sprintf("%02d", ($seconds/60)%60);
+    my $s = sprintf("%02d",  $seconds%60);
+    return "$h:$m:$s";
+}
+
+sub color($$) {
+    my ($a, $b) = @_;
+    my $color = '';
+    $color = 'green' if $a > $b;
+    $color = 'red'   if $a < $b;
+    return $color;
+}
+
+my $query_hours = "SELECT '#', to_char(date, 'YYYY-MM-DD HH24:MI') AS dat, queue_size_max, queue_size_avg, time_in_queue_max, time_in_queue_avg, time_with_operator_max,
+time_with_operator_avg, operators, calls, abandoned, abandon_position_avg, abandon_timeout_max, abandon_timeout_avg FROM $helper_table ORDER BY dat DESC LIMIT 745;";
+my $query_days = "SELECT '#',to_char(date, 'YYYY-MM-DD') AS datea,max(queue_size_max),round(avg(queue_size_avg)::decimal,2),max(time_in_queue_max),round(avg(time_in_queue_avg)::decimal,2),
+max(time_with_operator_max),round(avg(time_with_operator_avg)::decimal,2),round(avg(operators)::decimal,2),sum(calls),sum(abandoned), round(avg(abandon_position_avg)::decimal,2),
+max(abandon_timeout_max),round(avg(abandon_timeout_avg)::decimal,2) FROM $helper_table GROUP BY datea ORDER BY datea DESC LIMIT 120;";
+my $query_month = "SELECT '#',to_char(date, 'YYYY-MM') AS datea,max(queue_size_max),round(avg(queue_size_avg)::decimal,2),max(time_in_queue_max),round(avg(time_in_queue_avg)::decimal,2),
+max(time_with_operator_max),round(avg(time_with_operator_avg)::decimal,2),round(avg(operators)::decimal,2),sum(calls),sum(abandoned), round(avg(abandon_position_avg)::decimal,2),
+max(abandon_timeout_max),round(avg(abandon_timeout_avg)::decimal,2) FROM $helper_table GROUP BY datea ORDER BY datea DESC LIMIT 12;";
+
+get '/stats' => sub {shift->redirect_to('/stats/period/hours')};
+
+get '/stats/period/hours' => sub {
+  my $self = shift;
+  my $res  = $self->db->selectall_arrayref($query_hours);
+
+  my $table = $self->generate_html($res, 'hour');
+
+  $self->render(template => 'index', name =>'Hourly statistics', msg => $table);
+};
+
+get '/stats/period/days' => sub {
+  my $self = shift;
+  my $res  = $self->db->selectall_arrayref($query_days);
+
+  my $table = $self->generate_html($res);
+
+  $self->render(template => 'index', name =>'Daily statistics', msg => $table);
+};
+
+get '/stats/period/months' => sub {
+  my $self = shift;
+  my $res  = $self->db->selectall_arrayref($query_month);
+
+  my $table = $self->generate_html($res);
+
+  $self->render(template => 'index', name =>'Monthly statistics', msg => $table);
+};
+
+get '/stats/period' => sub {shift->redirect_to('/stats')};
+
+get '/stats/period/:date' => sub {
+  my $self = shift;
+  my $period = $self->param('date');
+  my ($format, $select, $name, $ex, $res);
+  
+  if ($period =~ /^\d{4}-\d{2}$/) {
+    $format = 'YYYY-MM-DD';
+    $select = 'YYYY-MM';
+    $name = 'Daily statistics';
+  }
+  elsif($period =~ /^\d{4}-\d{2}-\d{2}$/) {
+    $format = 'YYYY-MM-DD HH24:MI';
+    $select = 'YYYY-MM-DD';
+    $name = 'Hourly statistics';
+    $ex = 'hour';
+  }
+  elsif ($period =~ /^\d{4}-\d{2}-\d{2}_\d{2}$/) {
+    $format = 15;
+    $select = 13;
+    $ex = '10min';
+    $name = 'Statistics for 10 minutes';
+    $period =~ s/_/ /;
+  }
+  elsif ($period =~ /^\d{4}-\d{2}-\d{2}_\d{2}:\d{2}$/) {
+    $format = 16;
+    $select = 15;
+    $ex = '1min';
+    $name = 'Per-minute statistics';
+    $period =~ s/_/ /;
+    $period =~ s/0$//;
+  }
+  else {
+    $self->redirect_to('/stats');
+  }
+
+my $q;
+
+  if ($ex !~ /min$/) {
+    $q = "SELECT '#',
+       to_char(date, '$format') AS dat,
+       max(queue_size_max),
+       round(avg(queue_size_avg)::decimal,2),
+       max(time_in_queue_max),
+       round(avg(time_in_queue_avg)::decimal,2),
+       max(time_with_operator_max),
+       round(avg(time_with_operator_avg)::decimal,2),
+       round(avg(operators)::decimal,2),
+       sum(calls),
+       sum(abandoned),
+       round(avg(abandon_position_avg)::decimal, 2),
+       max(abandon_timeout_max),
+       round(avg(abandon_timeout_avg)::decimal,2)
+       FROM $helper_table
+       WHERE to_char(date,'$select') = '$period'
+       GROUP BY dat
+       ORDER BY dat DESC";
+
+    $res  = $self->db->selectall_arrayref($q);
+  }
+  else {
+    $q = "SELECT
+                '#',
+                COALESCE(a.date, b.date, c.date, d.date) AS date,
+                COALESCE(queue_max, '0'), COALESCE(queue_avg, '0'), COALESCE(time_in_queue_max, '0'),
+                COALESCE(time_in_queue_avg, '0'), COALESCE(time_with_agent_max, '0'),
+                COALESCE(time_with_agent_avg, '0'), COALESCE(agents, '0'), COALESCE(calls, '0'),
+                COALESCE(abandoned, '0'), COALESCE(quit_pos_avg, '0'), COALESCE(timeout_max, '0'), COALESCE(timeout_avg, '0')
+            FROM
+            (
+                SELECT
+                    substring(time from 1 for $format) as date,
+                    max(data3::integer) AS queue_max,
+                    round(avg(data3::integer),2) AS queue_avg
+                FROM $table WHERE
+                      substring(time from 1 for $select) = '$period' AND
+                      event = 'ENTERQUEUE' AND queuename = 'internet'
+                GROUP BY date
+                ORDER BY date DESC
+            ) AS a
+            FULL JOIN
+            (
+                SELECT
+                    substring(time from 1 for $format) as date,
+                    max(data1::integer) AS time_in_queue_max,
+                    round(avg(data1::integer), 2) AS time_in_queue_avg,
+                    max(data2::integer) AS time_with_agent_max,
+                    round(avg(data2::integer), 2) AS time_with_agent_avg
+                FROM $table WHERE
+                      substring(time from 1 for $select) = '$period' AND
+                      (event = 'COMPLETECALLER' OR event = 'COMPLETEAGENT') AND queuename = 'internet'
+                GROUP BY date
+                ORDER BY date DESC
+            ) AS b
+            ON a.date = b.date
+            FULL JOIN
+            (
+                SELECT
+                    date,
+                    count(agent) AS agents,
+                    sum(answered) AS calls
+                FROM (
+                    SELECT
+                    substring(time from 1 for $format) as date,
+                    agent,
+                    count(*) AS answered
+                    FROM $table WHERE 
+                    substring(time from 1 for $select) = '$period' AND
+                    (event = 'COMPLETECALLER' OR event = 'COMPLETEAGENT') AND queuename = 'internet'
+                    GROUP BY date, agent
+                ) AS all_agents
+                GROUP BY date
+                ORDER BY date DESC
+            ) AS c
+            ON COALESCE(a.date, b.date) = c.date
+            FULL JOIN
+            (
+                SELECT
+                    substring(time from 1 for $format) as date,
+                    count(*) AS abandoned,
+                    round(avg(data1::integer), 2) AS quit_pos_avg,
+                    max(data3::integer) AS timeout_max,
+                    round(avg(data3::integer), 2) AS timeout_avg
+                FROM $table WHERE
+                      substring(time from 1 for $select) = '$period' AND
+                      event = 'ABANDON' AND queuename = 'internet'
+                GROUP BY date
+                ORDER BY date DESC
+            ) AS d
+            ON COALESCE(a.date, b.date, c.date) = d.date
+            ORDER BY date DESC;";
+    $res  = $self->db->selectall_arrayref($q);
+  }
+  my $table = $self->generate_html($res, $ex);
+  $self->render(template => 'index', name => $name, msg => $table);
+};
+
+app->mode('production');
+app->start;
+
+__DATA__
+
+@@ index.html.ep
+% title 'CallCenter statistics';
+% layout 'main';
+<p id='name'><%== $name %></p>
+<%== $msg %>
+
+@@ navigation.html.ep
+<div class="nav">
+  <ul>
+    <li><a href="/stats/period/hours">Hourly statistics</a></li>
+    <li><a href="/stats/period/days">Daily statistics</a></li>
+    <li><a href="/stats/period/months">Monthly statistics</a></li>
+  </ul>
+</div>
+
+@@ layouts/main.html.ep
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+      }
+      .nav {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        width: 100%;
+        height: 40px;
+      }
+      .nav a { 
+        color: #eee;
+        font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+        font-size: 14px;
+        font-weight: bold;
+      }
+      ul {
+        margin: 0 auto;
+        padding: 0;
+        list-style-type: none;
+        overflow: hidden;
+        width: 630px;
+      }
+      li {
+        float: left;
+        padding-left: 20px;
+        padding-top: 10px;
+      }
+      #name
+      {
+        font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+        font-size: 14px;
+        font-weight: bold;
+        color: #222;
+        text-align: center;
+      }
+      #newspaper
+      {
+        font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+        font-size: 12px;
+        width: 1000px;
+        text-align: left;
+        border-collapse: collapse;
+        border: 1px solid gray;
+      }
+      #newspaper th
+      {
+        padding: 3px 5px;
+        font-weight: normal;
+        font-size: 11px;
+        color: #333;
+        border-bottom: 1px dashed gray;
+      }
+      #newspaper td
+      {
+        padding: 5px;
+        color: #444;
+      }
+      #newspaper tbody tr td {
+        white-space: nowrap;
+        border-bottom: 1px dashed gray;
+        border-left: 1px dashed gray;
+        border-right: 1px dashed gray;
+      }
+      #content {
+        margin: 20px auto;
+        width: 1000px;
+      }
+      .green
+      {
+        background: #ccffcc;
+      }
+      .red
+      {
+        background: #ffcccc;
+      }
+    </style>
+  </head>
+  <body>
+    %= include 'navigation'
+    <div id="content">
+      <%= content %>
+    </div>
+  </body>
+</html>
