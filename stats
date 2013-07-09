@@ -138,10 +138,12 @@ app->secret('quaD9r2Bj84RRpvB8eEXLK7HXb0nGnHbL0gX4IfF');
 
 sub hms($) {
     my $seconds = shift;
-    my $h = sprintf("%02d", ($seconds/3600)%24);
-    my $m = sprintf("%02d", ($seconds/60)%60);
-    my $s = sprintf("%02d",  $seconds%60);
-    return "$h:$m:$s";
+    my $h = $seconds/3600;
+    my $m = int(($seconds % 3600)/60);
+    my $s = int(($seconds % 3600)%60);
+    my $result = sprintf("%03d:%02d:%02d", $h,$m,$s);
+    $result =~ s/^0//;
+    return $result;
 }
 
 sub color($$) {
