@@ -73,4 +73,13 @@ $max_queue =~ s/(.*)\..*/$1/;
 my $date = $timestamp.':00:00';
 $db->do("INSERT INTO ${helper_table}(date, queue_size_max, queue_size_avg, time_in_queue_max, time_in_queue_avg, time_with_operator_max, time_with_operator_avg, operators, calls, abandoned, abandon_position_avg, abandon_timeout_max, abandon_timeout_avg )
 VALUES('$date', '$max_queue', '$avg_queue', '$max_wait', '$avg_wait', '$max_talk', '$avg_talk', '$opers_ans', '$opers_calls', '$aban', '$ab_p_a', '$ab_t_m', '$ab_t_a')");
+$db->do("insert into callcenter_operators(date, agent, answered_calls, notanswered_calls, time_max, time_avg, time_sum)
+select to_timestamp(coalesce(a.date, b.date), 'YYYY-MM-DD HH24:MI:SS') as date, coalesce(a.agent, b.agent) as agent,coalesce(a.answer, '0') as answered_calls,
+coalesce(b.noanswer, '0') as noanswered_calls,coalesce(a.time_max, '0') as time_max,coalesce(a.time_avg, '0') as time_avg,coalesce(a.time_sum, '0') as time_sum
+from (select substring(time from 1 for 19) as date,substring(agent from 7 for 3) AS agent,sum(data2::integer) as time_sum,max(data2::integer) as time_max,
+round(avg(data2::integer),2) as time_avg,count (*) as answer from $table where queuename = 'internet' and substring(time from 1 for 13) = '$timestamp'
+and (event = 'COMPLETECALLER' or event = 'COMPLETEAGENT') group by date, agent) as a
+full join (select substring(time from 1 for 19) as date, substring(agent from 7 for 3) AS agent, count (*) as noanswer from $table where queuename = 'internet' and
+substring(time from 1 for 13) = '$timestamp' and event = 'RINGNOANSWER' group by date, agent) as b
+on (a.date = b.date and a.agent=b.agent)order by date, agent");
 $db->disconnect;

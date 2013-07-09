@@ -90,6 +90,50 @@ helper generate_html => sub {
   return $html;
 };
 
+helper generate_agents => sub {
+  my ($self, $res, $type, $agent) = @_;
+  my $html = '<table id="newspaper"><thead><tr><th>Date</th><th>Agent</th><th>Answered calls</th><th>Not answered calls</th>
+  <th>Time talking with the subscriber max</th><th>Time talking with the subscriber avg</th><th>All time talking with the subscribers</th></tr></thead><tbody>';
+
+  for (my $i=0;$i<=$#{$res};$i++) {
+    my $ref  = ${$res}[$i];
+    my $d    = ${$ref}[0];
+    my $ag   = ${$ref}[1];
+    my $an   = ${$ref}[2];
+    my $nan  = ${$ref}[3];
+    my $tm   = ${$ref}[4];
+    my $ta   = ${$ref}[5];
+    my $ts   = ${$ref}[6];
+
+    $d .= ':00' if $type eq 'hour';
+    $d .= '0' if $type eq '10min';
+
+    my $p_an = sprintf("%.2f", ($an/($an+$nan))*100 ) if $nan > 0;
+    $p_an = 100 if $nan == 0;
+    my $a_ts = $ta*$an;
+
+    if ($type eq 'months') { $html .= "<td><a href='/stats/agent/period/months/$d'>$d</a></td>"; }
+    elsif ($type eq 'days') { $html .= "<td><a href='/stats/agent/period/days/$d'>$d</a></td>"; }
+    else { $html .= "<td>$d</td>"; }
+    if ($type ne '1min') {
+      (my $url = $d) =~ s/ /_/; $url =~ s/:00$//;
+      $html .= "<td><a href='/stats/agent/$ag/period/$url'>$ag</a></td>";
+    }
+    else {
+      $html .= "<td>$ag</td>";
+    }
+    $html .= "<td class='".color($an, 1000)."'>$an</td>".
+    "<td class='".color($p_an, 80)."' title='Answered calls percent: $p_an'>$nan</td>".
+    "<td class='".color(1800, $tm)."'>".hms($tm)."</td>".
+    "<td class='".color(900, $ta)."'>".hms($ta)."</td>".
+    "<td class='".color($ts, $a_ts)."'>".hms($ts)."</td>";
+    $html .= '</tr>';
+  }
+
+  $html .= '</tbody></table>';
+  return $html;
+};
+
 app->secret('quaD9r2Bj84RRpvB8eEXLK7HXb0nGnHbL0gX4IfF');
 
 sub hms($) {
@@ -284,6 +328,129 @@ my $q;
   $self->render(template => 'index', name => $name, msg => $table);
 };
 
+get '/stats/agent' => sub {shift->redirect_to('/stats/agent/period/months')};
+
+get '/stats/agent/period/months' => sub {
+  my $self = shift;
+
+  my $q = "SELECT substring(date::text from 1 for 7) AS datea, agent, sum(answered_calls), sum(notanswered_calls), max(time_max),
+    round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators GROUP BY datea, agent ORDER BY datea desc, agent";
+
+  my $res = $self->db->selectall_arrayref($q);
+  my $table = $self->generate_agents($res, 'months');
+  my $name = 'Monthly statistics of agents';
+  $self->render(template => 'agent', name => $name, msg => $table);
+};
+
+get '/stats/agent/period/months/:date' => sub {
+  my $self = shift;
+  my $period = $self->param('date');
+  if ($period =~ /^\d{4}-\d{2}$/) {
+    my $q = "SELECT substring(date::text from 1 for 7) AS datea, agent, sum(answered_calls), sum(notanswered_calls), max(time_max),
+      round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators WHERE substring(date::text from 1 for 7) = '$period'
+      GROUP BY datea, agent ORDER BY datea desc, agent";
+
+    my $res = $self->db->selectall_arrayref($q);
+    my $table = $self->generate_agents($res, 'month');
+    my $name = "Statistics of agents for $period";
+    $self->render(template => 'agent', name => $name, msg => $table);
+  }
+  else {
+    $self->redirect_to('/stats/agent/period/months');
+  }
+
+};
+
+get '/stats/agent/period/days' => sub {
+  my $self = shift;
+
+  my $q = "SELECT substring(date::text from 1 for 10) AS datea, agent, sum(answered_calls), sum(notanswered_calls), max(time_max),
+    round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators GROUP BY datea, agent ORDER BY datea desc, agent limit 90";
+
+  my $res = $self->db->selectall_arrayref($q);
+  my $table = $self->generate_agents($res, 'days');
+  my $name = 'Daily statistics of agents';
+  $self->render(template => 'agent', name => $name, msg => $table);
+};
+
+get '/stats/agent/period/days/:date' => sub {
+  my $self = shift;
+  my $period = $self->param('date');
+  if ($period =~ /^\d{4}-\d{2}-\d{2}$/) {
+    my $q = "SELECT substring(date::text from 1 for 10) AS datea, agent, sum(answered_calls), sum(notanswered_calls), max(time_max),
+      round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators WHERE substring(date::text from 1 for 10) = '$period'
+      GROUP BY datea, agent ORDER BY datea desc, agent";
+
+    my $res = $self->db->selectall_arrayref($q);
+    my $table = $self->generate_agents($res, 'day');
+    my $name = "Statistics of agents for $period";
+    $self->render(template => 'agent', name => $name, msg => $table);
+  }
+  else {
+    $self->redirect_to('/stats/agent/period/days');
+  }
+};
+
+get '/stats/agent/period/hours' => sub {
+  my $self = shift;
+
+  my $q = "SELECT substring(date::text from 1 for 13)||':00' AS datea, agent, sum(answered_calls), sum(notanswered_calls), max(time_max),
+    round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators GROUP BY datea, agent ORDER BY datea desc, agent limit 745";
+
+  my $res = $self->db->selectall_arrayref($q);
+  my $table = $self->generate_agents($res, 'yet_another_period');
+  my $name = 'Hourly statistics of agents';
+  $self->render(template => 'agent', name => $name, msg => $table);
+};
+
+get '/stats/agent/:agent/period/:date' => sub {
+  my $self = shift;
+  my $period = $self->param('date');
+  my $agent = $self->param('agent');
+  my ($format, $select, $ex, $name);
+
+  if ($period =~ /^\d{4}-\d{2}$/) {
+    $format = 10;
+    $select = 7;
+    $ex = 'day';
+    $name = "Daily statistics of agent $agent";
+  }
+  elsif($period =~ /^\d{4}-\d{2}-\d{2}$/) {
+    $format = 13;
+    $select = 10;
+    $name = "Hourly statistics of agent $agent";
+    $ex = 'hour';
+  }
+  elsif ($period =~ /^\d{4}-\d{2}-\d{2}_\d{2}$/) {
+    $format = 15;
+    $select = 13;
+    $ex = '10min';
+    $name = "Statistics for 10 minutes of agent $agent";
+    $period =~ s/_/ /;
+  }
+  elsif ($period =~ /^\d{4}-\d{2}-\d{2}_\d{2}:\d{2}$/) {
+    $format = 16;
+    $select = 15;
+    $ex = '1min';
+    $name = "Per-minute statistics of agent $agent";
+    $period =~ s/_/ /;
+    $period =~ s/0$//;
+  }
+  else {
+    $self->redirect_to('/stats');
+  }
+
+  my $q = "SELECT substring(date::text from 1 for $format) AS datea, agent, sum(answered_calls), sum(notanswered_calls), max(time_max),
+    round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators
+    WHERE substring(date::text from 1 for $select) = '$period' and agent = '$agent'
+    GROUP BY datea, agent ORDER BY datea desc, agent";
+
+  my $res = $self->db->selectall_arrayref($q);
+  my $table = $self->generate_agents($res, $ex);
+  $self->render(template => 'agent', name => $name, msg => $table);
+};
+
+
 app->mode('production');
 app->start;
 
@@ -295,13 +462,35 @@ __DATA__
 <p id='name'><%== $name %></p>
 <%== $msg %>
 
+@@ agent.html.ep
+% title 'CallCenter statistics';
+% layout 'agent';
+<p id='name'><%== $name %></p>
+<%== $msg %>
+
+@@ navigation.html.ep
 @@ navigation.html.ep
 <div class="nav">
-  <ul>
-    <li><a href="/stats/period/hours">Hourly statistics</a></li>
-    <li><a href="/stats/period/days">Daily statistics</a></li>
-    <li><a href="/stats/period/months">Monthly statistics</a></li>
-  </ul>
+  <div class="other"><a href="/stats/agent">Agents</a></div>
+  <div class="menu">
+    <center>
+      <span class="left"><a href="/stats/period/hours">Hourly statistics</a></span>
+      <span><a href="/stats/period/days">Daily statistics</a></span>
+      <span class="right"><a href="/stats/period/months">Monthly statistics</a></span>
+    </center>
+  </div>
+</div>
+
+@@ navigation_agent.html.ep
+<div class="nav_agent">
+  <div class="other"><a href="/stats">CallCenter</a></div>
+  <div class="menu">
+    <center>
+      <span class="left"><a href="/stats/agent/period/hours">Hourly statistics</a></span>
+      <span><a href="/stats/agent/period/days">Daily statistics</a></span>
+      <span class="right"><a href="/stats/agent/period/months">Monthly statistics</a></span>
+    </center>
+  </div>
 </div>
 
 @@ layouts/main.html.ep
@@ -309,85 +498,7 @@ __DATA__
 <html>
   <head>
     <title><%= title %></title>
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-      }
-      .nav {
-        margin: 0;
-        padding: 0;
-        background: #000;
-        width: 100%;
-        height: 40px;
-      }
-      .nav a { 
-        color: #eee;
-        font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-        font-size: 14px;
-        font-weight: bold;
-      }
-      ul {
-        margin: 0 auto;
-        padding: 0;
-        list-style-type: none;
-        overflow: hidden;
-        width: 630px;
-      }
-      li {
-        float: left;
-        padding-left: 20px;
-        padding-top: 10px;
-      }
-      #name
-      {
-        font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-        font-size: 14px;
-        font-weight: bold;
-        color: #222;
-        text-align: center;
-      }
-      #newspaper
-      {
-        font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-        font-size: 12px;
-        width: 1000px;
-        text-align: left;
-        border-collapse: collapse;
-        border: 1px solid gray;
-      }
-      #newspaper th
-      {
-        padding: 3px 5px;
-        font-weight: normal;
-        font-size: 11px;
-        color: #333;
-        border-bottom: 1px dashed gray;
-      }
-      #newspaper td
-      {
-        padding: 5px;
-        color: #444;
-      }
-      #newspaper tbody tr td {
-        white-space: nowrap;
-        border-bottom: 1px dashed gray;
-        border-left: 1px dashed gray;
-        border-right: 1px dashed gray;
-      }
-      #content {
-        margin: 20px auto;
-        width: 1000px;
-      }
-      .green
-      {
-        background: #ccffcc;
-      }
-      .red
-      {
-        background: #ffcccc;
-      }
-    </style>
+<link rel="stylesheet" type="text/css" href="/stats/style.css" />
   </head>
   <body>
     %= include 'navigation'
@@ -396,3 +507,107 @@ __DATA__
     </div>
   </body>
 </html>
+
+@@ layouts/agent.html.ep
+<!DOCTYPE html>
+<html>
+  <head>
+    <title><%= title %></title>
+<link rel="stylesheet" type="text/css" href="/stats/style.css" />
+  </head>
+  <body>
+    %= include 'navigation_agent'
+    <div id="content">
+      <%= content %>
+    </div>
+  </body>
+</html>
+
+@@ stats/style.css
+html, body {
+  margin: 0;
+  padding: 0;
+}
+.left {
+  float: left;
+}
+.right {
+  float: right;
+}
+.menu {
+  margin: 0 auto;
+  width: 700px;
+  margin-top: -20px;
+}
+.other {
+  padding-top: 10px;
+  padding-left: 20px;
+}
+.nav {
+  margin: 0;
+  padding: 0;
+  background: #339933;
+  width: 100%;
+  height: 40px;
+}
+.nav_agent {
+  margin: 0;
+  padding: 0;
+  background: #7665ac;
+  width: 100%;
+  height: 40px;
+}
+.nav a, .nav_agent a {
+  color: #eee;
+  font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+  font-size: 14px;
+  font-weight: bold;
+}
+#name
+{
+  font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+  font-size: 14px;
+  font-weight: bold;
+  color: #222;
+  text-align: center;
+}
+#newspaper
+{
+  font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
+  font-size: 12px;
+  width: 1000px;
+  text-align: left;
+  border-collapse: collapse;
+  border: 1px solid gray;
+}
+#newspaper th
+{
+  padding: 3px 5px;
+  font-weight: normal;
+  font-size: 11px;
+  color: #333;
+  border-bottom: 1px dashed gray;
+}
+#newspaper td
+{
+  padding: 5px;
+  color: #444;
+}
+#newspaper tbody tr td {
+  white-space: nowrap;
+  border-bottom: 1px dashed gray;
+  border-left: 1px dashed gray;
+  border-right: 1px dashed gray;
+}
+#content {
+  margin: 20px auto;
+  width: 1000px;
+}
+.green
+{
+  background: #ccffcc;
+}
+.red
+{
+  background: #ffcccc;
+}
