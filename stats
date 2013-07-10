@@ -110,6 +110,7 @@ helper generate_agents => sub {
 
     my $p_an = sprintf("%.2f", ($an/($an+$nan))*100 ) if $nan > 0;
     $p_an = 100 if $nan == 0;
+    my $p_nan = sprintf("%.2f" , 100 - $p_an);
     my $a_ts = $ta*$an;
 
     if ($type eq 'months') { $html .= "<td><a href='/stats/agent/period/months/$d'>$d</a></td>"; }
@@ -122,8 +123,8 @@ helper generate_agents => sub {
     else {
       $html .= "<td>$ag</td>";
     }
-    $html .= "<td class='".color($an, 1000)."'>$an</td>".
-    "<td class='".color($p_an, 80)."' title='Answered calls percent: $p_an'>$nan</td>".
+    $html .= "<td class='".color($an, 1000)."' title='Answered calls percent: $p_an'>$an</td>".
+    "<td class='".color($p_an, 80)."' title='Not answered calls percent: $p_nan'>$nan</td>".
     "<td class='".color(1800, $tm)."'>".hms($tm)."</td>".
     "<td class='".color(900, $ta)."'>".hms($ta)."</td>".
     "<td class='".color($ts, $a_ts)."'>".hms($ts)."</td>";
