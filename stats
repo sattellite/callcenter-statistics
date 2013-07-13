@@ -128,11 +128,11 @@ helper generate_agents => sub {
     else {
       $html .= "<td>$ag</td>";
     }
-    $html .= "<td class='".color($an, 1000)."' title='Answered calls percent: $p_an'>$an</td>".
+    $html .= "<td title='Answered calls percent: $p_an'>$an</td>".
     "<td class='".color($p_an, 80)."' title='Not answered calls percent: $p_nan'>$nan</td>".
     "<td class='".color(1800, $tm)."'>".hms($tm)."</td>".
     "<td class='".color(900, $ta)."'>".hms($ta)."</td>".
-    "<td class='".color($ts, $a_ts)."'>".hms($ts)."</td>";
+    "<td>".hms($ts)."</td>";
     $html .= "<td>".hms($sts)."</td>" if $type =~ /month/;
     $html .= '</tr>';
   }
