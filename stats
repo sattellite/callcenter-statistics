@@ -95,7 +95,7 @@ helper generate_agents => sub {
   my $html = '<table id="newspaper"><thead><tr><th>Date</th><th>Agent</th><th>Answered calls</th><th>Not answered calls</th>
   <th>Time talking with the subscriber max</th><th>Time talking with the subscriber avg</th><th>All time talking with the subscribers</th>';
   
-  $html .= '<th>Specific time per hour with the subscribers</th>' if $type =~ /month/;
+  $html .= '<th>Specific time per hour with the subscribers</th><th>Working hours</th>' if $type =~ /month/;
 
   $html .= '</tr></thead><tbody>';
 
@@ -109,6 +109,7 @@ helper generate_agents => sub {
     my $ta   = ${$ref}[5];
     my $ts   = ${$ref}[6];
     my $sts  = ${$ref}[7] if $type =~ /month/;
+    my $wh   = ${$ref}[8] if $type =~ /month/;
 
     $d .= ':00' if $type eq 'hour';
     $d .= '0' if $type eq '10min';
@@ -134,6 +135,7 @@ helper generate_agents => sub {
     "<td class='".color(900, $ta)."'>".hms($ta)."</td>".
     "<td>".hms($ts)."</td>";
     $html .= "<td>".hms($sts)."</td>" if $type =~ /month/;
+    $html .= "<td>$wh</td>" if $type =~ /month/;
     $html .= '</tr>';
   }
 
@@ -342,7 +344,7 @@ get '/stats/agent' => sub {shift->redirect_to('/stats/agent/period/months')};
 get '/stats/agent/period/months' => sub {
   my $self = shift;
 
-  my $q = "SELECT datea, b.agent, a_c, na_c, m_t, a_t, s_t, s_t/a_h AS udel
+  my $q = "SELECT datea, b.agent, a_c, na_c, m_t, a_t, s_t, s_t/a_h AS udel, a_h
     FROM (
       SELECT substring(date::text from 1 for 7) AS datea, agent, sum(answered_calls) AS a_c, sum(notanswered_calls) AS na_c,
       max(time_max) AS m_t, round(avg(time_avg)::decimal, 2) AS a_t, sum(time_sum) AS s_t
@@ -372,7 +374,7 @@ get '/stats/agent/period/months/:date' => sub {
   my $self = shift;
   my $period = $self->param('date');
   if ($period =~ /^\d{4}-\d{2}$/) {
-    my $q = "SELECT datea, b.agent, a_c, na_c, m_t, a_t, s_t, s_t/a_h AS udel
+    my $q = "SELECT datea, b.agent, a_c, na_c, m_t, a_t, s_t, s_t/a_h AS udel, a_h
       FROM (
         SELECT substring(date::text from 1 for 7) AS datea, agent, sum(answered_calls) AS a_c, sum(notanswered_calls) AS na_c,
         max(time_max) AS m_t, round(avg(time_avg)::decimal, 2) AS a_t, sum(time_sum) AS s_t
