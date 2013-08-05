@@ -3,6 +3,8 @@ use utf8;
 use Mojolicious::Lite;
 use DBI;
 
+app->sessions->cookie_name('stats');
+
 my $host = 'localhost';
 my $user = 'username';
 my $pass = 'password';
