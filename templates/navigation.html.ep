@@ -1,0 +1,47 @@
+    <header class="navbar navbar-inverse navbar-fixed-top rate-nav">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand" href="/stats/">Statistics</a>
+        </div>
+        <div class="collapse navbar-collapse">
+          <ul class="nav navbar-nav">
+            <li class="dropdown">
+              <a href="/stats/" class="dropdown-toggle" data-toggle="dropdown">CallCenter <b class="caret"></b></a>
+              <ul class="dropdown-menu">
+                <li><a href="/stats/period/hours">Hourly statistics</a></li>
+                <li><a href="/stats/period/days">Daily statistics</a></li>
+                <li><a href="/stats/period/months">Monthly statistics</a></li>
+              </ul>
+            </li>
+            <li class="dropdown">
+              <a href="/stats/agent/" class="dropdown-toggle" data-toggle="dropdown">Agents <b class="caret"></b></a>
+              <ul class="dropdown-menu">
+                <li><a href="/stats/agent/period/hours">Hourly statistics</a></li>
+                <li><a href="/stats/agent/period/days">Daily statistics</a></li>
+                <li><a href="/stats/agent/period/months">Monthly statistics</a></li>
+              </ul>
+            </li>
+            <li class="dropdown">
+              <a href="/stats/rate/" class="dropdown-toggle" data-toggle="dropdown">Rate <b class="caret"></b></a>
+              <ul class="dropdown-menu">
+                <li class="dropdown-header">CallCenter</li>
+                <li><a href="/stats/rate/cc/period/days">Daily statistics</a></li>
+                <li><a href="/stats/rate/cc/period/months">Monthly statistics</a></li>
+                <li class="divider"></li>
+                <li class="dropdown-header">Agents</li>
+                <li><a href="/stats/rate/agent/period/days">Daily statistics</a></li>
+                <li><a href="/stats/rate/agent/period/months">Monthly statistics</a></li>
+                <li class="divider"></li>
+                <li><a href="/stats/rate/last">Last estimates</a></li>
+              </ul>
+            </li>
+          </ul>
+        </div><!--/.nav-collapse -->
+      </div>
+    </header>
+

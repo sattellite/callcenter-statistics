@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title><%= $title %></title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="/stats/css/bootstrap.css" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="/stats/css/starter-template.css" rel="stylesheet">
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="/stats/js/html5shiv.js"></script>
+      <script src="/stats/js/respond.min.js"></script>
+    <![endif]-->
+  </head>
+
+  <body>
+
+    %= include 'navigation'
+
+    <div class="col-sm-1 col-md-2 col-lg-2"></div>
+    <%= content %>
+    <div class="col-sm-1 col-md-2 col-lg-2"></div>
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="/stats/js/jquery.js"></script>
+    <script src="/stats/js/bootstrap.min.js"></script>
+    <script>
+        $(function(){
+          function stripTrailingSlash(str) {
+            if(str.substr(-1) == '/') {
+              return str.substr(0, str.length - 1);
+            }
+            return str;
+          }
+
+          var url = window.location.pathname;
+          var activePage = stripTrailingSlash(url);
+
+          $('.nav li a').each(function(){
+            var currentPage = stripTrailingSlash($(this).attr('href'));
+
+            if (activePage == currentPage) {
+              $(this).parent().addClass('active');
+            }
+          });
+          $('em.deviation').tooltip({placement: 'auto left'});
+        });
+    </script>
+  </body>
+</html>
+

@@ -10,6 +10,7 @@ my $user = 'username';
 my $pass = 'password';
 my $table = 'queuelog';
 my $helper_table = 'callcenter_statistics';
+my $rate_table   = 'callcenter_rating';
 
 helper db => sub {
   my $self = shift;
@@ -21,7 +22,7 @@ helper db => sub {
 helper generate_html => sub {
   my ($self, $res, $type) = @_;
 
-  my $html = '<table id="newspaper"><thead><tr><th>Date</th><th>Queue size max</th><th>Queue size avg</th><th>Time in queue max</th>
+  my $html = '<table class="table table-bordered table-hover table-condensed"><thead><tr><th>Date</th><th>Queue size max</th><th>Queue size avg</th><th>Time in queue max</th>
     <th>Time in queue avg</th><th>Time with agent max</th><th>Time with agent avg</th><th>Responsible agents</th><th>Answered calls</th>
     <th>Abandoned calls</th><th>Abandoned position avg</th><th>Time to abandon a call max</th><th>Time to abandon a call avg</th></tr></thead><tbody>';
 
@@ -94,7 +95,7 @@ helper generate_html => sub {
 
 helper generate_agents => sub {
   my ($self, $res, $type, $time) = @_;
-  my $html = '<table id="newspaper"><thead><tr><th>Date</th><th>Agent</th><th>Answered calls</th><th>Not answered calls</th>
+  my $html = '<table class="table table-bordered table-hover table-condensed"><thead><tr><th>Date</th><th>Agent</th><th>Answered calls</th><th>Not answered calls</th>
   <th>Time talking with the subscriber max</th><th>Time talking with the subscriber avg</th><th>All time talking with the subscribers</th>';
 
   $html .= '<th>Specific time per hour with the subscribers</th><th>Working hours</th>' if $type =~ /month/;
@@ -132,8 +133,8 @@ helper generate_agents => sub {
     else {
       $html .= "<td>$ag</td>";
     }
-    $html .= "<td title='Answered calls percent: $p_an'>$an</td>".
-    "<td class='".color($p_an, 80)."' title='Not answered calls percent: $p_nan'>$nan</td>".
+    $html .= "<td><em class='deviation' title='Answered calls percent: $p_an'>$an</em></td>".
+    "<td class='".color($p_an, 80)."'><em class='deviation' title='Not answered calls percent: $p_nan'>$nan</em></td>".
     "<td class='".color(1800, $tm)."'>".hms($tm)."</td>".
     "<td class='".color(900, $ta)."'>".hms($ta)."</td>".
     "<td>".hms($ts)."</td>";
@@ -148,8 +149,7 @@ helper generate_agents => sub {
 
 helper generate_rate => sub {
   my ($self, $res, $type, $standart) = @_;
-  my $html = '<div class="col-xs-12 col-sm-10 col-md-8 col-lg-8 table-responsive">';
-  $html .= '<table class="table table-bordered table-hover table-condensed"><thead><tr><th>Дата</th>';
+  my $html = '<table class="table table-bordered table-hover table-condensed"><thead><tr><th>Date</th>';
   $html .= '<th>Agent</th>' unless $type eq 'cc';
   $html .= '<th>Courtesy</th><th>Advice</th><th>Competence</th>';
   $html .= '<th>Avg rate</th><th># of rates</th>' unless $type eq 'last';
@@ -211,7 +211,7 @@ helper generate_rate => sub {
 
     $html .= "</tr>";
   }
-  $html .= '</tbody></table></div>';
+  $html .= '</tbody></table>';
   return $html;
 };
 
@@ -230,8 +230,8 @@ sub hms($) {
 sub color($$) {
     my ($a, $b) = @_;
     my $color = '';
-    $color = 'green' if $a > $b;
-    $color = 'red'   if $a < $b;
+    $color = 'alert-success' if $a > $b;
+    $color = 'alert-danger'  if $a < $b;
     return $color;
 }
 
@@ -252,7 +252,7 @@ get '/stats/period/hours' => sub {
 
   my $table = $self->generate_html($res, 'hour');
 
-  $self->render(template => 'index', name =>'Hourly statistics', msg => $table);
+  $self->render(template => 'ccenter', name =>'Hourly statistics', msg => $table);
 };
 
 get '/stats/period/days' => sub {
@@ -261,7 +261,7 @@ get '/stats/period/days' => sub {
 
   my $table = $self->generate_html($res);
 
-  $self->render(template => 'index', name =>'Daily statistics', msg => $table);
+  $self->render(template => 'ccenter', name =>'Daily statistics', msg => $table);
 };
 
 get '/stats/period/months' => sub {
@@ -270,7 +270,7 @@ get '/stats/period/months' => sub {
 
   my $table = $self->generate_html($res);
 
-  $self->render(template => 'index', name =>'Monthly statistics', msg => $table);
+  $self->render(template => 'ccenter', name =>'Monthly statistics', msg => $table);
 };
 
 get '/stats/period' => sub {shift->redirect_to('/stats')};
@@ -310,7 +310,7 @@ get '/stats/period/:date' => sub {
     $self->redirect_to('/stats');
   }
 
-my $q;
+  my $q;
 
   if ($ex !~ /min$/) {
     $q = "SELECT '#',
@@ -408,7 +408,7 @@ my $q;
     $res  = $self->db->selectall_arrayref($q);
   }
   my $table = $self->generate_html($res, $ex);
-  $self->render(template => 'index', name => $name, msg => $table);
+  $self->render(template => 'ccenter', name => $name, msg => $table);
 };
 
 get '/stats/agent' => sub {shift->redirect_to('/stats/agent/period/months')};
@@ -572,7 +572,7 @@ get '/stats/rate' => sub {shift->redirect_to('/stats/rate/agent/period/months')}
 get '/stats/rate/last' => sub {
   my $self = shift;
 
-  my $q = "SELECT substring(time::varchar from 1 for 19), dst, courtesy, advice, competence, cdr_id FROM callcenter_rating ORDER BY time DESC LIMIT 100";
+  my $q = "SELECT substring(time::varchar from 1 for 19), dst, courtesy, advice, competence, cdr_id FROM $rate_table ORDER BY time DESC LIMIT 100";
   my $res = $self->db->selectall_arrayref($q);
   my $table = $self->generate_rate($res, 'last');
   $self->render(template => 'rate', msg => $table);
@@ -584,21 +584,21 @@ get '/stats/rate/agent/period/days' => sub {
   my $q = "SELECT coalesce(a.date, b.date, c.date) AS date, coalesce(a.dst, b.dst, c.dst) AS agent, coalesce(a.courtesy, '0.00') AS courtesy,
     coalesce(b.advice, '0.00') AS advice, coalesce(c.competence, '0.00') AS competence, round((coalesce(a.courtesy,'0')+coalesce(b.advice,'0')+coalesce(c.competence,'0'))/3, 2) AS avg,
     GREATEST(a.count::int, b.count::int, c.count::int) AS count
-    FROM (SELECT substring(time::text from 1 for 10) AS date, dst, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM callcenter_rating
+    FROM (SELECT substring(time::text from 1 for 10) AS date, dst, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND courtesy != '-' GROUP BY dst, date ORDER BY date, dst) AS a
-    FULL JOIN (SELECT substring(time::text from 1 for 10) AS date, dst, round(avg(advice::int),2) AS advice, count(*) AS count FROM callcenter_rating
+    FULL JOIN (SELECT substring(time::text from 1 for 10) AS date, dst, round(avg(advice::int),2) AS advice, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND advice != '-' GROUP BY dst, date ORDER BY date, dst) AS b ON (a.date = b.date and a.dst=b.dst)
     FULL JOIN (SELECT substring(time::text from 1 for 10) AS date, dst, round(avg(competence::int),2) AS competence,
-    count(*) AS count FROM callcenter_rating WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY dst, date ORDER BY date, dst) AS c
+    count(*) AS count FROM $rate_table WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY dst, date ORDER BY date, dst) AS c
     ON (b.date = c.date and b.dst=c.dst) ORDER BY date DESC, agent LIMIT 600";
 
   my $qs = "SELECT coalesce(a.date, b.date, c.date) AS date, coalesce(a.courtesy, '0.00') AS courtesy, coalesce(b.advice, '0.00') AS advice,
     coalesce(c.competence, '0.00') AS competence, round((coalesce(a.courtesy,'0.00')+coalesce(b.advice, '0.00')+coalesce(c.competence, '0.00'))/3, 2) AS avg FROM
-    (SELECT substring(time::text from 1 for 10) AS date, round(avg(courtesy::int),2) AS courtesy FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 10) AS date, round(avg(courtesy::int),2) AS courtesy FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND courtesy != '-' GROUP BY date ORDER BY date) AS a FULL JOIN
-    (SELECT substring(time::text from 1 for 10) AS date, round(avg(advice::int),2) AS advice FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 10) AS date, round(avg(advice::int),2) AS advice FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND advice != '-' GROUP BY date ORDER BY date) AS b ON (a.date = b.date) FULL JOIN
-    (SELECT substring(time::text from 1 for 10) AS date, round(avg(competence::int),2) AS competence FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 10) AS date, round(avg(competence::int),2) AS competence FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY date ORDER BY date) AS c ON (b.date = c.date) ORDER BY date DESC LIMIT 600";
 
   my $res = $self->db->selectall_arrayref($q);
@@ -614,21 +614,21 @@ get '/stats/rate/agent/period/months' => sub {
   my $q = "SELECT coalesce(a.date, b.date, c.date) AS date, coalesce(a.dst, b.dst, c.dst) AS agent, coalesce(a.courtesy, '0.00') AS courtesy,
     coalesce(b.advice, '0.00') AS advice, coalesce(c.competence, '0.00') AS competence,round((coalesce(a.courtesy,'0')+coalesce(b.advice,'0')+coalesce(c.competence,'0'))/3, 2) AS avg,
     GREATEST(a.count::int, b.count::int, c.count::int) AS count
-    FROM (SELECT substring(time::text from 1 for 7) AS date, dst, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM callcenter_rating
+    FROM (SELECT substring(time::text from 1 for 7) AS date, dst, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND courtesy != '-' GROUP BY dst, date ORDER BY date, dst) AS a
-    FULL JOIN (SELECT substring(time::text from 1 for 7) AS date, dst, round(avg(advice::int),2) AS advice, count(*) AS count FROM callcenter_rating
+    FULL JOIN (SELECT substring(time::text from 1 for 7) AS date, dst, round(avg(advice::int),2) AS advice, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND advice != '-' GROUP BY dst, date ORDER BY date, dst) AS b ON (a.date = b.date and a.dst=b.dst)
     FULL JOIN (SELECT substring(time::text from 1 for 7) AS date, dst, round(avg(competence::int),2) AS competence,
-    count(*) AS count FROM callcenter_rating WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY dst, date ORDER BY date, dst) AS c
+    count(*) AS count FROM $rate_table WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY dst, date ORDER BY date, dst) AS c
     ON (b.date = c.date and b.dst=c.dst) ORDER BY date DESC, agent LIMIT 100";
 
   my $qs = "SELECT coalesce(a.date, b.date, c.date) AS date, coalesce(a.courtesy, '0.00') AS courtesy, coalesce(b.advice, '0.00') AS advice,
     coalesce(c.competence, '0.00') AS competence, round((coalesce(a.courtesy,'0.00')+coalesce(b.advice, '0.00')+coalesce(c.competence, '0.00'))/3, 2) AS avg FROM
-    (SELECT substring(time::text from 1 for 7) AS date, round(avg(courtesy::int),2) AS courtesy FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 7) AS date, round(avg(courtesy::int),2) AS courtesy FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND courtesy != '-' GROUP BY date ORDER BY date) AS a FULL JOIN
-    (SELECT substring(time::text from 1 for 7) AS date, round(avg(advice::int),2) AS advice FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 7) AS date, round(avg(advice::int),2) AS advice FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND advice != '-' GROUP BY date ORDER BY date) AS b ON (a.date = b.date) FULL JOIN
-    (SELECT substring(time::text from 1 for 7) AS date, round(avg(competence::int),2) AS competence FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 7) AS date, round(avg(competence::int),2) AS competence FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY date ORDER BY date) AS c ON (b.date = c.date) ORDER BY date DESC LIMIT 600";
 
   my $res = $self->db->selectall_arrayref($q);
@@ -644,11 +644,11 @@ get '/stats/rate/cc/period/days' => sub {
   my $q = "SELECT coalesce(a.date, b.date, c.date) AS date, 'agent', coalesce(a.courtesy, '0.00') AS courtesy, coalesce(b.advice, '0.00') AS advice,
     coalesce(c.competence, '0.00') AS competence, round((coalesce(a.courtesy,'0.00')+coalesce(b.advice, '0.00')+coalesce(c.competence, '0.00'))/3, 2) AS avg,
     GREATEST(a.count::int, b.count::int, c.count::int) AS count FROM
-    (SELECT substring(time::text from 1 for 10) AS date, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 10) AS date, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND courtesy != '-' GROUP BY date ORDER BY date) AS a FULL JOIN
-    (SELECT substring(time::text from 1 for 10) AS date, round(avg(advice::int),2) AS advice, count(*) AS count FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 10) AS date, round(avg(advice::int),2) AS advice, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND advice != '-' GROUP BY date ORDER BY date) AS b ON (a.date = b.date) FULL JOIN
-    (SELECT substring(time::text from 1 for 10) AS date, round(avg(competence::int),2) AS competence, count(*) AS count FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 10) AS date, round(avg(competence::int),2) AS competence, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY date ORDER BY date) AS c ON (b.date = c.date) ORDER BY date DESC LIMIT 600";
 
   my $res = $self->db->selectall_arrayref($q);
@@ -662,11 +662,11 @@ get '/stats/rate/cc/period/months' => sub {
   my $q = "SELECT coalesce(a.date, b.date, c.date) AS date, 'agent', coalesce(a.courtesy, '0.00') AS courtesy, coalesce(b.advice, '0.00') AS advice,
     coalesce(c.competence, '0.00') AS competence, round((coalesce(a.courtesy,'0.00')+coalesce(b.advice, '0.00')+coalesce(c.competence, '0.00'))/3, 2) AS avg,
     GREATEST(a.count::int, b.count::int, c.count::int) AS count FROM
-    (SELECT substring(time::text from 1 for 7) AS date, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 7) AS date, round(avg(courtesy::int),2) AS courtesy, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND courtesy != '-' GROUP BY date ORDER BY date) AS a FULL JOIN
-    (SELECT substring(time::text from 1 for 7) AS date, round(avg(advice::int),2) AS advice, count(*) AS count FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 7) AS date, round(avg(advice::int),2) AS advice, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND advice != '-' GROUP BY date ORDER BY date) AS b ON (a.date = b.date) FULL JOIN
-    (SELECT substring(time::text from 1 for 7) AS date, round(avg(competence::int),2) AS competence, count(*) AS count FROM callcenter_rating
+    (SELECT substring(time::text from 1 for 7) AS date, round(avg(competence::int),2) AS competence, count(*) AS count FROM $rate_table
     WHERE time > '2013-08-01 00:00:00' AND competence != '-' GROUP BY date ORDER BY date) AS c ON (b.date = c.date) ORDER BY date DESC LIMIT 100";
 
   my $res = $self->db->selectall_arrayref($q);
@@ -677,256 +677,3 @@ get '/stats/rate/cc/period/months' => sub {
 app->mode('production');
 app->start;
 
-__DATA__
-
-@@ index.html.ep
-% title 'CallCenter statistics';
-% layout 'main';
-<p id='name'><%== $name %></p>
-<%== $msg %>
-
-@@ agent.html.ep
-% title 'CallCenter statistics';
-% layout 'agent';
-<p id='name'><%== $name %></p>
-<%== $msg %>
-
-@@ rate.html.ep
-% layout 'rate', title => 'Estimates of agents';
-<%== $msg %>
-
-@@ navigation.html.ep
-<div class="nav">
-  <div class="other"><a href="/stats/agent">Agents</a></div>
-  <div class="menu">
-    <center>
-      <span class="left"><a href="/stats/period/hours">Hourly statistics</a></span>
-      <span><a href="/stats/period/days">Daily statistics</a></span>
-      <span class="right"><a href="/stats/period/months">Monthly statistics</a></span>
-    </center>
-  </div>
-</div>
-
-@@ navigation_agent.html.ep
-<div class="nav_agent">
-  <div class="other"><a href="/stats">CallCenter</a></div>
-  <div class="menu">
-    <center>
-      <span class="left"><a href="/stats/agent/period/hours">Hourly statistics</a></span>
-      <span><a href="/stats/agent/period/days">Daily statistics</a></span>
-      <span class="right"><a href="/stats/agent/period/months">Monthly statistics</a></span>
-    </center>
-  </div>
-</div>
-
-@@ navigation_rate.html.ep
-    <header class="navbar navbar-inverse navbar-fixed-top rate-nav">
-      <div class="container">
-        <div class="navbar-header">
-          <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-            <span class="icon-bar"></span>
-          </button>
-          <a class="navbar-brand" href="#">Estimates of agents</a>
-        </div>
-        <div class="collapse navbar-collapse">
-          <ul class="nav navbar-nav">
-            <li class="dropdown">
-              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Agents <b class="caret"></b></a>
-              <ul class="dropdown-menu">
-                <li><a href="/stats/rate/agent/period/days">Daily statistics</a></li>
-                <li><a href="/stats/rate/agent/period/months">Monthly statistics</a></li>
-              </ul>
-            </li>
-            <li class="dropdown">
-              <a href="#" class="dropdown-toggle" data-toggle="dropdown">CallCenter <b class="caret"></b></a>
-              <ul class="dropdown-menu">
-                <li><a href="/stats/rate/cc/period/days">Daily statistics</a></li>
-                <li><a href="/stats/rate/cc/period/months">Monthly statistics</a></li>
-              </ul>
-            </li>
-            <li><a href="/stats/rate/last">Last estimates</a></li>
-          </ul>
-        </div><!--/.nav-collapse -->
-      </div>
-    </header>
-
-@@ layouts/main.html.ep
-<!DOCTYPE html>
-<html>
-  <head>
-    <title><%= title %></title>
-<link rel="stylesheet" type="text/css" href="/stats/style.css" />
-  </head>
-  <body>
-    %= include 'navigation'
-    <div id="content">
-      <%= content %>
-    </div>
-  </body>
-</html>
-
-@@ layouts/agent.html.ep
-<!DOCTYPE html>
-<html>
-  <head>
-    <title><%= title %></title>
-<link rel="stylesheet" type="text/css" href="/stats/style.css" />
-  </head>
-  <body>
-    %= include 'navigation_agent'
-    <div id="content">
-      <%= content %>
-    </div>
-  </body>
-</html>
-
-@@ layouts/rate.html.ep
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title><%= $title %></title>
-
-    <!-- Bootstrap core CSS -->
-    <link href="/stats/css/bootstrap.css" rel="stylesheet">
-
-    <!-- Custom styles for this template -->
-    <link href="/stats/css/starter-template.css" rel="stylesheet">
-
-    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
-    <!--[if lt IE 9]>
-      <script src="/stats/js/html5shiv.js"></script>
-      <script src="/stats/js/respond.min.js"></script>
-    <![endif]-->
-  </head>
-
-  <body>
-
-    %= include 'navigation_rate'
-
-    <div class="col-sm-1 col-md-2 col-lg-2"></div>
-    <%= content %>
-    <div class="col-sm-1 col-md-2 col-lg-2"></div>
-
-    <!-- Bootstrap core JavaScript
-    ================================================== -->
-    <!-- Placed at the end of the document so the pages load faster -->
-    <script src="/stats/js/jquery.js"></script>
-    <script src="/stats/js/bootstrap.min.js"></script>
-    <script>
-        $(function(){
-          function stripTrailingSlash(str) {
-            if(str.substr(-1) == '/') {
-              return str.substr(0, str.length - 1);
-            }
-            return str;
-          }
-
-          var url = window.location.pathname;
-          var activePage = stripTrailingSlash(url);
-
-          $('.nav li a').each(function(){
-            var currentPage = stripTrailingSlash($(this).attr('href'));
-
-            if (activePage == currentPage) {
-              $(this).parent().addClass('active');
-            }
-          });
-          $('em.deviation').tooltip({placement: 'auto left'});
-        });
-    </script>
-  </body>
-</html>
-
-@@ stats/style.css
-html, body {
-  margin: 0;
-  padding: 0;
-}
-.left {
-  float: left;
-}
-.right {
-  float: right;
-}
-.menu {
-  margin: 0 auto;
-  width: 700px;
-  margin-top: -20px;
-}
-.other {
-  padding-top: 10px;
-  padding-left: 20px;
-}
-.nav {
-  margin: 0;
-  padding: 0;
-  background: #339933;
-  width: 100%;
-  height: 40px;
-}
-.nav_agent {
-  margin: 0;
-  padding: 0;
-  background: #7665ac;
-  width: 100%;
-  height: 40px;
-}
-.nav a, .nav_agent a {
-  color: #eee;
-  font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-  font-size: 14px;
-  font-weight: bold;
-}
-#name
-{
-  font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-  font-size: 14px;
-  font-weight: bold;
-  color: #222;
-  text-align: center;
-}
-#newspaper
-{
-  font-family: "Lucida Sans Unicode", "Lucida Grande", Sans-Serif;
-  font-size: 12px;
-  width: 1000px;
-  text-align: left;
-  border-collapse: collapse;
-  border: 1px solid gray;
-}
-#newspaper th
-{
-  padding: 3px 5px;
-  font-weight: normal;
-  font-size: 11px;
-  color: #333;
-  border-bottom: 1px dashed gray;
-}
-#newspaper td
-{
-  padding: 5px;
-  color: #444;
-}
-#newspaper tbody tr td {
-  white-space: nowrap;
-  border-bottom: 1px dashed gray;
-  border-left: 1px dashed gray;
-  border-right: 1px dashed gray;
-}
-#content {
-  margin: 20px auto;
-  width: 1000px;
-}
-.green
-{
-  background: #ccffcc;
-}
-.red
-{
-  background: #ffcccc;
-}
