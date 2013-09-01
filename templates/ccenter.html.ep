@@ -1,5 +1,5 @@
 % layout 'bootstrap',  title => 'CallCenter statistics';
-    <div class="col-xs-12 col-sm-10 col-md-8 col-lg-8 table-responsive">
+    <div class="col-xs-12 col-sm-10 col-md-10 table-responsive">
       <h4 class='text-center'><%== $name %></h4>
       <%== $msg %>
     </div>
