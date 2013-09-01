@@ -524,6 +524,7 @@ get '/stats/agent/:agent/period/:date' => sub {
   my $self = shift;
   my $period = $self->param('date');
   my $agent = $self->param('agent');
+  $self->redorect_to('/stats') unless $agent =~ /^\d{3}$/;
   my ($format, $select, $ex, $name);
 
   if ($period =~ /^\d{4}-\d{2}$/) {
