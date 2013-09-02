@@ -38,6 +38,7 @@
                 <li><a href="/stats/rate/agent/period/months">Monthly statistics</a></li>
                 <li class="divider"></li>
                 <li><a href="/stats/rate/last">Last estimates</a></li>
+                <li><a href="/stats/rate/bad">Last bad estimates</a></li>
               </ul>
             </li>
           </ul>

@@ -524,7 +524,7 @@ get '/stats/agent/:agent/period/:date' => sub {
   my $self = shift;
   my $period = $self->param('date');
   my $agent = $self->param('agent');
-  $self->redorect_to('/stats') unless $agent =~ /^\d{3}$/;
+  $self->redirect_to('/stats') unless $agent =~ /^\d{3}$/;
   my ($format, $select, $ex, $name);
 
   if ($period =~ /^\d{4}-\d{2}$/) {
@@ -575,6 +575,23 @@ get '/stats/rate/last' => sub {
 
   my $q = "SELECT substring(time::varchar from 1 for 19), dst, courtesy, advice, competence, cdr_id FROM $rate_table ORDER BY time DESC LIMIT 100";
   my $res = $self->db->selectall_arrayref($q);
+  my $table = $self->generate_rate($res, 'last');
+  $self->render(template => 'rate', msg => $table);
+};
+
+get '/stats/rate/bad' => sub {
+  my $self = shift;
+
+  my $q = "SELECT substring(time::varchar from 1 for 19), dst, courtesy, advice, competence, cdr_id FROM $rate_table ORDER BY time DESC LIMIT 1000";
+  my $res = $self->db->selectall_arrayref($q);
+  foreach my $i (0 .. $#$res) {
+    if (grep {$res->[$i]->[2] eq $_} qw(- 4 5) and
+      grep {$res->[$i]->[3] eq $_} qw(- 4 5) and
+      grep {$res->[$i]->[4] eq $_} qw(- 4 5)) {
+      delete $res->[$i]; # Delete all null and good estimates elements
+    }
+  }
+  @{$res} = grep defined, @{$res}; # Remove undefined elements
   my $table = $self->generate_rate($res, 'last');
   $self->render(template => 'rate', msg => $table);
 };
