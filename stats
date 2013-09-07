@@ -2,6 +2,8 @@
 use utf8;
 use Mojolicious::Lite;
 use DBI;
+use Time::Local;
+use Date::Calc 'Add_Delta_YM';
 
 app->sessions->cookie_name('stats');
 
@@ -22,7 +24,7 @@ helper db => sub {
 helper generate_html => sub {
   my ($self, $res, $type) = @_;
 
-  my $html = '<table class="table table-bordered table-hover table-condensed"><thead><tr><th>Date</th><th>Queue size max</th><th>Queue size avg</th><th>Time in queue max</th>
+  my $html = '<table class="table table-bordered table-condensed"><thead><tr><th>Date</th><th>Queue size max</th><th>Queue size avg</th><th>Time in queue max</th>
     <th>Time in queue avg</th><th>Time with agent max</th><th>Time with agent avg</th><th>Responsible agents</th><th>Answered calls</th>
     <th>Abandoned calls</th><th>Abandoned position avg</th><th>Time to abandon a call max</th><th>Time to abandon a call avg</th></tr></thead><tbody>';
 
@@ -94,12 +96,12 @@ helper generate_html => sub {
 };
 
 helper generate_agents => sub {
-  my ($self, $res, $type, $time) = @_;
+  my ($self, $res, $type, $queue) = @_;
   my $html = '<table class="table table-bordered table-hover table-condensed"><thead><tr><th>Date</th><th>Agent</th><th>Answered calls</th><th>Not answered calls</th>
   <th>Time talking with the subscriber max</th><th>Time talking with the subscriber avg</th><th>All time talking with the subscribers</th>';
 
   $html .= '<th>Specific time per hour with the subscribers</th><th>Working hours</th>' if $type =~ /month/;
-  $html .= '<th>Time in queue</th>' if $time;
+  $html .= '<th>Time in queue</th>' if $queue;
 
   $html .= '</tr></thead><tbody>';
 
@@ -140,6 +142,7 @@ helper generate_agents => sub {
     "<td>".hms($ts)."</td>";
     $html .= "<td>".hms($sts)."</td>" if $type =~ /month/;
     $html .= "<td>$wh</td>" if $type =~ /month/;
+    $html .= "<td>".hms($queue->{$ag}->{time})."</td>" if $queue;
     $html .= '</tr>';
   }
 
@@ -233,6 +236,75 @@ sub color($$) {
     $color = 'alert-success' if $a > $b;
     $color = 'alert-danger'  if $a < $b;
     return $color;
+}
+
+sub queue_time($$) {
+  my ($res, $period) = @_;
+
+  my %queue_time;
+  my %last_event;
+  for (my $i=0; $i<=$#$res; $i++) {
+    my ($year,$mon,$mday,$hour,$min,$sec) = split(/[\s\-:]+/, ${$$res[$i]}[0]);
+    my $time = timelocal($sec,$min,$hour,$mday,$mon-1,$year);
+    unless ($queue_time{${$$res[$i]}[1]}) {
+      $queue_time{scalar ${$$res[$i]}[1]}{time} = 0;
+      $queue_time{scalar ${$$res[$i]}[1]}{first} = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{event} = '';
+      $last_event{scalar ${$$res[$i]}[1]}{time} = '';
+    }
+    if($last_event{scalar ${$$res[$i]}[1]}{event} eq 'ADDMEMBER' and ${$$res[$i]}[2] eq 'ADDMEMBER') {
+      $queue_time{scalar ${$$res[$i]}[1]}{last}  = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{event} = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{time}  = $time;
+    }
+    elsif ($last_event{scalar ${$$res[$i]}[1]}{event} eq 'REMOVEMEMBER' and ${$$res[$i]}[2] eq 'REMOVEMEMBER') {
+      $queue_time{scalar ${$$res[$i]}[1]}{time} += $last_event{scalar ${$$res[$i]}[1]}{time};
+      $queue_time{scalar ${$$res[$i]}[1]}{time} -= $time;
+      $queue_time{scalar ${$$res[$i]}[1]}{last}  = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{event} = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{time}  = $time;
+    }
+    else {
+      $queue_time{scalar ${$$res[$i]}[1]}{time} -= $time if ${$$res[$i]}[2] eq 'ADDMEMBER';
+      $queue_time{scalar ${$$res[$i]}[1]}{time} += $time if ${$$res[$i]}[2] eq 'REMOVEMEMBER';
+      $queue_time{scalar ${$$res[$i]}[1]}{last}  = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{event} = ${$$res[$i]}[2];
+      $last_event{scalar ${$$res[$i]}[1]}{time}  = $time;
+    }
+  }
+  my ($p_year, $p_mon, $p_day, $start, $end);
+  if ($period =~ m/^\d{4}-\d{2}-\d{2}$/) {
+    ($p_year, $p_mon, $p_day) = split('-', $period);
+    $start = timelocal(0,0,0,$p_day,$p_mon-1,$p_year);
+    $end   = timelocal(59,59,23,$p_day,$p_mon-1,$p_year);
+  }
+  elsif ($period =~ m/^\d{4}-\d{2}$/) {
+    ($p_year, $p_mon) = split('-', $period);
+    $p_day = '01';
+    my ($n_year,$n_mon,$n_day) = Add_Delta_YM($p_year,$p_mon,$p_day,0,1);
+    $start = timelocal(0,0,0,$p_day,$p_mon-1,$p_year);
+    $end   = timelocal(0,0,0,$n_day,$n_mon-1,$n_year)-1;
+  }
+  elsif ($period =~ m/^\d{4}$/) {
+    $p_year = $period;
+    $p_mon = $p_day = '01';
+    my ($n_year,$n_mon,$n_day) = Add_Delta_YM($p_year,$p_mon,$p_day,1,0);
+    $start = timelocal(0,0,0,$p_day,$p_mon-1,$p_year);
+    $end   = timelocal(0,0,0,$n_day,$n_mon-1,$n_year)-1;
+  }
+
+  foreach my $k (sort keys %queue_time) {
+    $queue_time{$k}{time} -= $start if $queue_time{$k}{first} eq 'REMOVEMEMBER';
+    if ($queue_time{$k}{last} eq 'ADDMEMBER') {
+      if ($end < time) {
+        $queue_time{$k}{time} += $end;
+      }
+      else {
+        $queue_time{$k}{time} += time;
+      }
+    }
+  }
+  return \%queue_time;
 }
 
 my $query_hours = "SELECT '#', to_char(date, 'YYYY-MM-DD HH24:MI') AS dat, queue_size_max, queue_size_avg, time_in_queue_max, time_in_queue_avg, time_with_operator_max,
@@ -428,7 +500,7 @@ get '/stats/agent/period/months' => sub {
       (
         SELECT substring(date::text from 1 for 13) AS datea, agent, sum(answered_calls) AS s
         FROM callcenter_operators
-        GROUP BY datea, agent ORDER BY datea desc, agent
+        GROUP BY datea, agent
       ) AS a
       WHERE (substring(datea from 12 for 2)::integer >= 7 AND a.s > 1)
         OR substring(datea from 12 for 2)::integer < 7
@@ -467,8 +539,13 @@ get '/stats/agent/period/months/:date' => sub {
       ) AS c
       ON b.agent = c.agent;";
 
+    my $sub_q = "SELECT substring(time from 1 for 19) as date, substring(agent from 7 for 3) as agent, event
+          FROM $table WHERE substring(time from 1 for 7) = '$period'
+          AND (event = 'ADDMEMBER' OR event = 'REMOVEMEMBER') ORDER BY date";
     my $res = $self->db->selectall_arrayref($q);
-    my $table = $self->generate_agents($res, 'month');
+    my $res2 = $self->db->selectall_arrayref($sub_q);
+    my $q_time = queue_time($res2, $period);
+    my $table = $self->generate_agents($res, 'month', $q_time);
     my $name = "Statistics of agents for $period";
     $self->render(template => 'agent', name => $name, msg => $table);
   }
@@ -498,8 +575,13 @@ get '/stats/agent/period/days/:date' => sub {
       round(avg(time_avg)::decimal, 2), sum(time_sum) FROM callcenter_operators WHERE substring(date::text from 1 for 10) = '$period'
       GROUP BY datea, agent ORDER BY datea desc, agent";
 
+    my $sub_q = "SELECT substring(time from 1 for 19) as date, substring(agent from 7 for 3) as agent, event
+          FROM $table WHERE substring(time from 1 for 10) = '$period'
+          AND (event = 'ADDMEMBER' OR event = 'REMOVEMEMBER') ORDER BY date";
     my $res = $self->db->selectall_arrayref($q);
-    my $table = $self->generate_agents($res, 'day');
+    my $res2 = $self->db->selectall_arrayref($sub_q);
+    my $q_time = queue_time($res2, $period);
+    my $table = $self->generate_agents($res, 'day', $q_time);
     my $name = "Statistics of agents for $period";
     $self->render(template => 'agent', name => $name, msg => $table);
   }
